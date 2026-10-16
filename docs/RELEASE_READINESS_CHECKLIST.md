@@ -90,6 +90,7 @@ build when evidence is missing**, not only when a job failed:
 | `migration-dry-run` | `server/src/db/migrations/` changed | ticked "Schema migration dry-run passes" **and** the Migration Dry-Run job succeeded |
 | `migration-reversible` | migrations changed | ticked "No irreversible data transforms" |
 | contract preflight | `contracts/` changed | Contract Upgrade Preflight job succeeded |
+| readiness self-test | always (high-risk) | Readiness Self-Test job (`scripts/release-readiness.mjs --self-test`) succeeded |
 
 A required job that was `skipped` or `cancelled` counts as missing evidence. If the `detect-high-risk` job itself fails, the gate fails closed.
 

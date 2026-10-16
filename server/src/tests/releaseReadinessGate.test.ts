@@ -15,7 +15,7 @@ const base = {
   highRisk: true,
   hasMigration: false,
   hasContractChange: false,
-  jobs: { checklist: "success", migration: "skipped", contract: "skipped" },
+  jobs: { checklist: "success", migration: "skipped", contract: "skipped", readiness: "success" },
 };
 
 describe("evaluateReleaseGate", () => {
@@ -55,9 +55,16 @@ describe("evaluateReleaseGate", () => {
       ...base,
       hasContractChange: true,
       prBody: tickAll(TEMPLATE),
-      jobs: { checklist: "success", migration: "skipped", contract: "cancelled" },
+      jobs: { ...base.jobs, contract: "cancelled" },
     });
     expect(r.failures).toEqual(["Contract upgrade preflight job cancelled."]);
+  });
+
+  it("blocks when the readiness self-test (#1047) failed or did not run", () => {
+    const failed = evaluateReleaseGate({ ...base, prBody: tickAll(TEMPLATE), jobs: { ...base.jobs, readiness: "failure" } });
+    expect(failed.failures).toEqual(["Readiness self-test job failure."]);
+    const missing = evaluateReleaseGate({ ...base, prBody: tickAll(TEMPLATE), jobs: { ...base.jobs, readiness: undefined } });
+    expect(missing.failures).toEqual(["Readiness self-test job did not run (result: missing)."]);
   });
 
   it("allows waivers only with an incident ticket", () => {

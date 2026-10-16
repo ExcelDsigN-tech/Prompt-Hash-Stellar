@@ -9,10 +9,10 @@
  *
  * Inputs (env, as set by .github/workflows/release-readiness.yml):
  *   PR_BODY, HIGH_RISK, HAS_MIGRATION, HAS_CONTRACT_CHANGE,
- *   CHECKLIST_RESULT, MIGRATION_RESULT, CONTRACT_RESULT
+ *   CHECKLIST_RESULT, MIGRATION_RESULT, CONTRACT_RESULT, READINESS_RESULT
  *
  * Local use:
- *   PR_BODY="$(cat body.md)" HIGH_RISK=true node scripts/release-readiness-gate.mjs
+ *   PR_BODY="$(cat body.md)" HIGH_RISK=true CHECKLIST_RESULT=success READINESS_RESULT=success node scripts/release-readiness-gate.mjs
  *
  * A checklist item may be skipped only through the PR template's Exception
  * block: an "Incident ticket:" value plus the item's key in "Skipped items:".
@@ -78,6 +78,8 @@ export function evaluateReleaseGate(input) {
   jobOk("Checklist", input.jobs?.checklist, true);
   jobOk("Migration dry-run", input.jobs?.migration, input.hasMigration);
   jobOk("Contract upgrade preflight", input.jobs?.contract, input.hasContractChange);
+  // Runs on every PR (scripts/release-readiness.mjs --self-test, #1047).
+  jobOk("Readiness self-test", input.jobs?.readiness, true);
 
   const required = { ...REQUIRED_EVIDENCE, ...(input.hasMigration ? MIGRATION_EVIDENCE : {}) };
   for (const [key, fragment] of Object.entries(required)) {
@@ -101,6 +103,7 @@ function main() {
       checklist: env.CHECKLIST_RESULT,
       migration: env.MIGRATION_RESULT,
       contract: env.CONTRACT_RESULT,
+      readiness: env.READINESS_RESULT,
     },
   });
 

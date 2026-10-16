@@ -8,6 +8,41 @@ import TimelineEvent, {
   type TimelineEventType,
   type TimelineVisibility,
 } from "../models/TimelineEvent";
+import { minimizeOperationalMetadata } from "./operationalMetadata";
+
+type TimelineCursor = { createdAt: string; id: string };
+
+function encodeCursor(event: { createdAt: Date; _id: unknown }): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: event.createdAt.toISOString(), id: String(event._id) }),
+  ).toString("base64url");
+}
+
+function decodeCursor(cursor: string): TimelineCursor | { id: string } {
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (typeof decoded?.createdAt === "string" && typeof decoded?.id === "string") {
+      const date = new Date(decoded.createdAt);
+      if (!Number.isNaN(date.getTime())) return decoded;
+    }
+  } catch {
+    // Fall through to the legacy ObjectId cursor for compatibility.
+  }
+  return { id: cursor };
+}
+
+function applyCursor(query: Record<string, any>, cursor?: string): void {
+  if (!cursor) return;
+  const decoded = decodeCursor(cursor);
+  if ("createdAt" in decoded) {
+    query.$or = [
+      { createdAt: { $lt: new Date(decoded.createdAt) } },
+      { createdAt: new Date(decoded.createdAt), _id: { $lt: decoded.id } },
+    ];
+  } else {
+    query._id = { $lt: decoded.id };
+  }
+}
 
 export class TimelineService {
   /**
@@ -23,7 +58,10 @@ export class TimelineService {
     summary: string;
     metadata?: Record<string, unknown>;
   }) {
-    const event = new TimelineEvent(params);
+    const event = new TimelineEvent({
+      ...params,
+      metadata: minimizeOperationalMetadata(params.metadata),
+    });
     await event.save();
     return event;
   }
@@ -61,12 +99,10 @@ export class TimelineService {
       query.eventType = { $in: eventTypes };
     }
 
-    if (cursor) {
-      query._id = { $lt: cursor };
-    }
+    applyCursor(query, cursor);
 
     const results = await TimelineEvent.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1);
 
     let hasNextPage = false;
@@ -75,7 +111,7 @@ export class TimelineService {
     if (results.length > limit) {
       hasNextPage = true;
       results.pop();
-      nextCursor = results[results.length - 1]._id;
+      nextCursor = encodeCursor(results[results.length - 1]);
     }
 
     return { data: results, metadata: { hasNextPage, nextCursor } };
@@ -98,12 +134,10 @@ export class TimelineService {
       visibility: { $in: ["public"] },
     };
 
-    if (cursor) {
-      query._id = { $lt: cursor };
-    }
+    applyCursor(query, cursor);
 
     const results = await TimelineEvent.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1);
 
     let hasNextPage = false;
@@ -112,7 +146,7 @@ export class TimelineService {
     if (results.length > limit) {
       hasNextPage = true;
       results.pop();
-      nextCursor = results[results.length - 1]._id;
+      nextCursor = encodeCursor(results[results.length - 1]);
     }
 
     return { data: results, metadata: { hasNextPage, nextCursor } };

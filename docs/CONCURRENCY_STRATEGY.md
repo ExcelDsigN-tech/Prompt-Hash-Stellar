@@ -11,6 +11,8 @@ Documents the guards, failure modes, and recovery steps for race-prone mutations
 | Webhook / event delivery | Idempotency key store (atomic check-and-set) | Replay → return cached response; conflict → HTTP 409 |
 | Entitlement grant | Upsert with `$setOnInsert` | No-op (idempotent) |
 | Lifecycle transition | Versioned conditional update | `StaleVersionError` → HTTP 409 |
+| Timeline page | `(createdAt, _id)` composite cursor after visibility filtering | Reuse the cursor; inserts or permission changes do not shift the page |
+| Maintainer action | Explicit approval linked to signed intent and outcome receipts | Block until approved; review the receipt on success or failure |
 
 ## Retry storm handling
 
@@ -30,3 +32,17 @@ Documents the guards, failure modes, and recovery steps for race-prone mutations
 2. Run `server/scripts/repairEntitlement.ts --dry-run` to estimate affected records.
 3. Apply repair, then re-run integrity checks.
 4. Issue refunds for any duplicate charges via the payout ledger API.
+
+## Operational recovery notes
+
+- A timeline cursor is opaque and remains valid when records are inserted,
+	deleted, or lose visibility. Malformed legacy cursors fall back to the
+	historical `_id` boundary; clients can restart from the first page after an
+	invalid response.
+- Never retry a high-impact action with a new approval or idempotency key.
+	Keep the original signed intent receipt, inspect its terminal outcome
+	receipt, and create a new approval only after a maintainer has determined
+	recovery is safe.
+- If receipt persistence fails, treat the protected action as failed and use
+	the approval record plus request ID to reconcile before retrying. Do not
+	bypass approval during rollback.
